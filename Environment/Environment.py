@@ -163,6 +163,62 @@ class Environment:
         reward = self.reward_func(robot, distance_new, distance_old, reachedPickup, collision, runOutOfTime)
 
         return [next_state, reward, not robot.isActive(), reachedPickup]
+    def createAdaptiveReward(self, robot, dist_new, dist_old, reachedPickup, collision, runOutOfTime):
+    """
+    Creates a reward based on distance to goal, reaching the goal, avoiding collisions, and smooth movement.
+
+    :param robot: robot object that contains state information like angular velocity
+    :param dist_new: the new distance to the goal after the action has been taken
+    :param dist_old: the old distance to the goal before the action was taken
+    :param reachedPickup: Boolean flag indicating if the robot reached its goal in this step
+    :param collision: Boolean flag indicating if the robot collided with a wall or another robot
+    :param runOutOfTime: Boolean flag indicating if the robot ran out of time
+    :return: A dictionary of rewards for each component based on the robot's actions
+    """
+    
+    # Calculate the living factor, which is the ratio of remaining steps to total steps
+    living_factor = self.steps_left / self.steps
+    
+    # Initialize an empty dictionary to store reward components
+    reward = {}
+
+    # Set values for different reward and penalty components
+    r_arrival = 30  # Reward for reaching the goal (higher value indicates a higher reward for arrival)
+    r_collision = -20  # Penalty for collision (negative value represents a penalty)
+    r_runOutOfTime = -10  # Penalty for running out of time
+    w_close = 4  # Weight for reducing distance when the robot is close to the goal
+    w_far = 2  # Weight for reducing distance when the robot is far from the goal
+    w_angular_penalty = -0.2  # Penalty for excessive angular velocity (negative value penalizes higher angular velocity)
+    distance_threshold = 0.5  # Threshold for considering the robot close to the goal
+    angular_velocity_threshold = 0.8  # Threshold for considering the robot's angular velocity too high
+
+    # If the robot has reached the goal, assign the corresponding reward
+    if reachedPickup:
+        reward['arrival'] = r_arrival
+    # If the robot has collided, assign the corresponding penalty
+    elif collision:
+        reward['collision'] = r_collision
+    # If the robot has run out of time, assign the corresponding penalty
+    elif runOutOfTime:
+        reward['out_of_time'] = r_runOutOfTime
+    else:
+        # Proximity-based distance reward: reward the robot for reducing the distance to the goal
+        if dist_old > dist_new:  # If the robot has reduced the distance to the goal
+            if dist_new < distance_threshold:  # If the robot is close to the goal
+                reward['proximity'] = w_close * (dist_old - dist_new)  # Use close proximity weight
+            else:  # If the robot is far from the goal
+                reward['proximity'] = w_far * (dist_old - dist_new)  # Use far proximity weight
+        else:  # If the robot has increased the distance to the goal
+            reward['proximity'] = w_far * (dist_old - dist_new)  # Penalize or reward based on the distance change
+
+        # Smoothness reward: penalize the robot for excessive angular velocity
+        # Assuming the robot's angular velocity is stored in the 5th index of its state_raw attribute
+        current_angular_velocity = abs(robot.state_raw[robot.time_steps - 1][5])  # Get the current angular velocity
+        if current_angular_velocity > angular_velocity_threshold:  # If angular velocity exceeds threshold
+            reward['smoothness'] = w_angular_penalty * current_angular_velocity  # Apply penalty for excessive angular velocity
+
+    # Return the dictionary containing the rewards
+    return reward
 
 
     def createReward(self, robot, dist_new, dist_old, reachedPickup, collision, runOutOfTime):
